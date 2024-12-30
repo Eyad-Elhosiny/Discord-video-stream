@@ -8,6 +8,8 @@ export class VideoStream extends Writable {
     public startTime?: number;
     private noSleep: boolean;
     private paused: boolean = false;
+    private lastFrame: any; // New: Buffer to store the last frame
+
 
     constructor(udp: MediaUdp, fps: number = 30, noSleep = false) {
         super();
@@ -15,6 +17,8 @@ export class VideoStream extends Writable {
         this.count = 0;
         this.sleepTime = 1000 / fps;
         this.noSleep = noSleep;
+        this.lastFrame = null;
+
     }
 
     public setSleepTime(time: number) {
@@ -22,24 +26,28 @@ export class VideoStream extends Writable {
     }
 
     async _write(frame: any, encoding: BufferEncoding, callback: (error?: Error | null) => void) {
+        if (this.paused && this.lastFrame) {
+            // setTimeout(() => callback(), this.sleepTime); // Prevent blocking
+            this.udp.sendVideoFrame(this.lastFrame);
+            return;
+        }
+        
         this.count++;
+        const next = (this.count + 1) * this.sleepTime - (performance.now() - this.startTime);
+        this.lastFrame = frame;
+        
         if (!this.startTime)
             this.startTime = performance.now();
 
         this.udp.sendVideoFrame(frame);
 
-        if (this.noSleep)
-        {
+        
+        if (this.noSleep) {
             callback();
-        }
-        else
-        {
-            do {
-                this.count++;
-                const next = (this.count + 1) * this.sleepTime - (performance.now() - this.startTime);
-                await this.delay(next);
-            } while (this.paused);
-            callback();
+        } else {
+            setTimeout(() => {
+                callback();
+            }, next);
         }
     }
 
