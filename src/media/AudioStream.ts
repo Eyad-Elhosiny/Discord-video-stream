@@ -1,5 +1,5 @@
 import { Writable } from "stream";
-import { MediaUdp } from "../client/voice/MediaUdp.js";
+import { MediaUdp } from "../client/voice/MediaUdp";
 
 class AudioStream extends Writable {
     public udp: MediaUdp;
@@ -7,7 +7,7 @@ class AudioStream extends Writable {
     public sleepTime: number;
     public startTime?: number;
     private noSleep: boolean;
-    private paused: boolean = false;
+    private paused: boolean; // New: Pause flag
 
     constructor(udp: MediaUdp, noSleep = false) {
         super();
@@ -15,43 +15,38 @@ class AudioStream extends Writable {
         this.count = 0;
         this.sleepTime = 20;
         this.noSleep = noSleep;
+        this.paused = false;
     }
 
-    async _write(chunk: any, _: BufferEncoding, callback: (error?: Error | null) => void) {
-        this.count++;
-        if (!this.startTime)
-            this.startTime = performance.now();
-
-        this.udp.sendAudioFrame(chunk);
-
-        if (this.noSleep)
-        {
-            callback();
-        }
-        else
-        {
-            do {
-                this.count++;
-                const next = (this.count + 1) * this.sleepTime - (performance.now() - this.startTime);
-                await this.delay(next);
-            } while (this.paused);
-            callback();
-        }
-    }
-
-    private delay(ms: number) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
-    }
-
-    pause() {
+    public pauseStream() {
         this.paused = true;
     }
 
-    resume() {
+    public resumeStream() {
         this.paused = false;
+    }
+
+    _write(chunk: any, _: BufferEncoding, callback: (error?: Error | null) => void) {
+        if (this.paused) {
+            // setTimeout(() => callback(), this.sleepTime); // Prevent blocking
+            return;
+        }
+
+        this.count++;
+        if (!this.startTime) this.startTime = performance.now();
+
+        this.udp.sendAudioFrame(chunk);
+
+        const next = (this.count + 1) * this.sleepTime - (performance.now() - this.startTime);
+
+        if (this.noSleep) {
+            callback();
+        } else {
+            setTimeout(() => {
+                callback();
+            }, next);
+        }
     }
 }
 
-export {
-    AudioStream
-};
+export { AudioStream };
